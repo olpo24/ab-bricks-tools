@@ -20,6 +20,9 @@ final class FormFinder
 
     public string $lastEngine = '';
 
+    /** @var array{stage:string, exitCode?:int, stderr?:string, cmd?:string}|null */
+    public ?array $lastEngineError = null;
+
     /**
      * @return Form[]
      */
@@ -54,12 +57,16 @@ final class FormFinder
      */
     private function scanViaWpCli(): ?array
     {
+        $this->lastEngineError = null;
+
         if (!function_exists('proc_open') || !function_exists('proc_close')) {
+            $this->lastEngineError = ['stage' => 'proc_open disabled'];
             return null;
         }
 
         $script = ABBTL_PLUGIN_DIR . 'src/Modules/BricksFormManager/wpcli-scan.php';
         if (!is_file($script)) {
+            $this->lastEngineError = ['stage' => 'script missing'];
             return null;
         }
 
@@ -70,6 +77,7 @@ final class FormFinder
         );
         $cmd = WpCli::buildCommand($args);
         if ($cmd === null) {
+            $this->lastEngineError = ['stage' => 'buildCommand returned null'];
             return null;
         }
 
@@ -79,25 +87,45 @@ final class FormFinder
             2 => ['pipe', 'w'],
         ];
 
-        $process = @proc_open($cmd, $descriptors, $pipes);
+        // Bypass cmd.exe on Windows — the multi-quoted-arg command (php + ini +
+        // phar + script + ABSPATH, several containing parens) is fragile through
+        // `cmd /S /C "..."`. CreateProcess parses it cleanly.
+        $options = [];
+        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+            $options['bypass_shell'] = true;
+        }
+
+        $process = @proc_open($cmd, $descriptors, $pipes, null, null, $options);
         if (!is_resource($process)) {
+            $this->lastEngineError = ['stage' => 'proc_open spawn failed', 'cmd' => $cmd];
             return null;
         }
 
         fclose($pipes[0]);
         $stdout = (string) stream_get_contents($pipes[1]);
-        // Drain stderr so the child can't block on a full pipe; we don't surface it here.
-        stream_get_contents($pipes[2]);
+        $stderr = (string) stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
         $exitCode = proc_close($process);
 
         if ($exitCode !== 0) {
+            $this->lastEngineError = [
+                'stage'    => 'non-zero exit',
+                'exitCode' => $exitCode,
+                'stderr'   => mb_substr(trim($stderr), 0, 800),
+                'cmd'      => (defined('WP_DEBUG') && WP_DEBUG) ? $cmd : null,
+            ];
             return null;
         }
 
         $data = json_decode($stdout, true);
         if (!is_array($data)) {
+            $this->lastEngineError = [
+                'stage'    => 'invalid JSON from stdout',
+                'stderr'   => mb_substr(trim($stderr), 0, 400),
+                'stdout'   => mb_substr(trim($stdout), 0, 400),
+                'cmd'      => (defined('WP_DEBUG') && WP_DEBUG) ? $cmd : null,
+            ];
             return null;
         }
 
@@ -126,6 +154,8 @@ final class FormFinder
             emailSubject:      $str('emailSubject'),
             successMessage:    $str('successMessage'),
             emailErrorMessage: $str('emailErrorMessage'),
+            hasRedirectAction: !empty($r['hasRedirectAction']),
+            redirect:          $str('redirect'),
         );
     }
 }

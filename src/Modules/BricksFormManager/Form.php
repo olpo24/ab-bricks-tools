@@ -21,6 +21,8 @@ final class Form
         public readonly ?string $emailSubject,
         public readonly ?string $successMessage,
         public readonly ?string $emailErrorMessage,
+        public readonly bool $hasRedirectAction,
+        public readonly ?string $redirect,
     ) {
     }
 

@@ -14,6 +14,8 @@ final class Usage
         public readonly string $elementId,
         public readonly string $elementName,   // type slug, e.g. "section", "button"
         public readonly ?string $elementLabel, // user/Bricks-set label, e.g. "Submit Wrapper"
+        /** @var string[] */
+        public readonly array $classIds,
     ) {
     }
 }

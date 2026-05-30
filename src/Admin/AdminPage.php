@@ -3,17 +3,20 @@ declare(strict_types=1);
 
 namespace AB\BricksTools\Admin;
 
-use AB\BricksTools\Modules\HasAdminPage;
 use AB\BricksTools\Modules\Registrar;
 
 final class AdminPage
 {
     public const MENU_SLUG = 'abbtl-modules';
 
-    private ?string $hookSuffix = null;
+    /**
+     * Fallback menu position when Bricks's actual position can't be
+     * determined at registration time. We normally compute the real position
+     * dynamically (see addMenu()) so we land directly below Bricks.
+     */
+    private const MENU_POSITION_FALLBACK = 2.99;
 
-    /** @var array<string, string> Map of module slug => submenu hook suffix. */
-    private array $moduleHookSuffixes = [];
+    private ?string $hookSuffix = null;
 
     public function __construct(private Registrar $registrar)
     {
@@ -21,7 +24,11 @@ final class AdminPage
 
     public function register(): void
     {
-        add_action('admin_menu', [$this, 'addMenu']);
+        // Priority 11 so Bricks's default-priority (10) menu registration has
+        // already populated the global $menu array by the time we run — that
+        // lets us look up Bricks's *actual* position (post WP float-shim) and
+        // slot ourselves directly after it.
+        add_action('admin_menu', [$this, 'addMenu'], 11);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
     }
 
@@ -34,7 +41,7 @@ final class AdminPage
             self::MENU_SLUG,
             [$this, 'render'],
             'dashicons-admin-tools',
-            80
+            $this->resolveMenuPosition()
         );
 
         // Rename the auto-created first submenu from "Bricks Tools" to "Modules".
@@ -46,43 +53,40 @@ final class AdminPage
             self::MENU_SLUG,
             [$this, 'render']
         );
+    }
 
-        // One submenu per enabled module that implements HasAdminPage.
-        foreach ($this->registrar->getAll() as $slug => $module) {
-            if (!$this->registrar->isEnabled($slug)) {
-                continue;
-            }
-            if (!$module instanceof HasAdminPage) {
-                continue;
-            }
-
-            $submenuSlug = self::MENU_SLUG . '-' . $slug;
-            $hookSuffix  = add_submenu_page(
-                self::MENU_SLUG,
-                $module->getName(),
-                $module->getName(),
-                'manage_options',
-                $submenuSlug,
-                function () use ($module): void {
-                    if (!current_user_can('manage_options')) {
-                        wp_die(esc_html__('You do not have permission to view this page.', 'ab-bricks-tools'));
-                    }
-                    $module->renderAdminPage();
-                }
-            );
-
-            if (is_string($hookSuffix)) {
-                $this->moduleHookSuffixes[$slug] = $hookSuffix;
-            }
+    /**
+     * Find Bricks's actual menu position in the global $menu array (which it
+     * registered earlier at default priority 10), and return a slightly
+     * higher value so we appear directly below it. WP rebuilds the menu
+     * ordering with `ksort($menu, SORT_NUMERIC)` after admin_menu, so
+     * fractional positions are honoured.
+     */
+    private function resolveMenuPosition(): float
+    {
+        global $menu;
+        if (!is_array($menu) || empty($menu)) {
+            return self::MENU_POSITION_FALLBACK;
         }
+
+        foreach ($menu as $pos => $entry) {
+            if (!is_array($entry) || ($entry[2] ?? null) !== 'bricks') {
+                continue;
+            }
+            $candidate = (float) $pos + 0.0001;
+            // Walk past any other entry that already sits in this micro-band.
+            while (isset($menu[(string) $candidate])) {
+                $candidate += 0.0001;
+            }
+            return $candidate;
+        }
+
+        return self::MENU_POSITION_FALLBACK;
     }
 
     public function enqueueAssets(string $hookSuffix): void
     {
-        $isMainModulesPage = ($hookSuffix === $this->hookSuffix);
-        $isModuleSubmenu   = in_array($hookSuffix, $this->moduleHookSuffixes, true);
-
-        if (!$isMainModulesPage && !$isModuleSubmenu) {
+        if ($hookSuffix !== $this->hookSuffix) {
             return;
         }
 

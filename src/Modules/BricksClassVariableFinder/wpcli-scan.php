@@ -7,9 +7,13 @@
  * UsageScanner, writes a JSON array of usages to STDOUT.
  *
  * Self-contained — the plugin autoloader is NOT available with --skip-plugins.
+ *
+ * No `declare(strict_types=1)` here on purpose — `wp eval-file` runs scripts
+ * through `eval()` which requires the declare to be the very first statement
+ * of the eval'd code; the docblock above is enough to disqualify it. The
+ * scanner classes we delegate to still enforce strict types via method
+ * signatures, so we lose nothing.
  */
-
-declare(strict_types=1);
 
 if (!defined('ABSPATH')) {
     fwrite(STDERR, "wpcli-scan.php must be executed via `wp eval-file`.\n");

@@ -295,7 +295,11 @@ final class WpCli
 
     private static function normalizePath(string $path): string
     {
-        return str_replace('\\', '/', $path);
+        // PHP-FPM can hand back $_SERVER['USERPROFILE'] with double backslashes
+        // (e.g. "C:\\Users\\Alan.Blair") which we'd turn into "C://Users//...".
+        // Collapse any run of separators into a single forward slash.
+        $path = str_replace('\\', '/', $path);
+        return (string) preg_replace('|/+|', '/', $path);
     }
 
     private static function parseVersion(string $stdout): ?string

@@ -65,6 +65,9 @@ final class FormScanner
 
                 $settings = is_array($element['settings'] ?? null) ? $element['settings'] : [];
 
+                $actions           = is_array($settings['actions'] ?? null) ? $settings['actions'] : [];
+                $hasRedirectAction = in_array('redirect', $actions, true);
+
                 $forms[] = [
                     'postId'            => (int) $row->post_id,
                     'postTitle'         => (string) ($row->post_title !== '' ? $row->post_title : '(no title)'),
@@ -81,6 +84,8 @@ final class FormScanner
                     'emailSubject'      => self::scalarToString($settings['emailSubject'] ?? null),
                     'successMessage'    => self::scalarToString($settings['successMessage'] ?? null),
                     'emailErrorMessage' => self::scalarToString($settings['emailErrorMessage'] ?? null),
+                    'hasRedirectAction' => $hasRedirectAction,
+                    'redirect'          => self::scalarToString($settings['redirect'] ?? null),
                 ];
             }
         }

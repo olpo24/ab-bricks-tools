@@ -148,8 +148,8 @@
     list-style: none;
     margin: 16px 0 0 0;
     padding: 0;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 12px;
 }
 
@@ -249,6 +249,25 @@
 
 [x-cloak] {
     display: none !important;
+}
+
+/* Admin shell — tab nav + panel spacing */
+.abbtl-admin__tabs {
+    margin-top: 8px;
+}
+
+.abbtl-admin__panel {
+    margin-top: 20px;
+}
+
+/* Drop the heading and description that each module render emits at the top
+   of its own page — when it's hosted as a tab panel the outer page already
+   carries the H1. Less duplicate header noise. */
+.abbtl-admin__panel .abbtl-bfm > h1,
+.abbtl-admin__panel .abbtl-cvf > h1 {
+    font-size: 18px;
+    margin-top: 0;
+    padding-top: 0;
 }
 
 .abbtl-bfm__table {
@@ -404,6 +423,20 @@ textarea.abbtl-bfm__edit-input {
 
 .abbtl-bfm__cell-status--error {
     color: #d63638;
+}
+
+.abbtl-bfm__edit-hint {
+    margin: 12px 0 0;
+    padding: 8px 12px;
+    background: #f6f7f7;
+    border-left: 3px solid #2271b1;
+    border-radius: 3px;
+    color: #50575e;
+    font-size: 13px;
+}
+
+.abbtl-bfm__edit-hint span[aria-hidden="true"] {
+    margin-right: 6px;
 }
 
 /* ====================================================================
@@ -607,4 +640,366 @@ textarea.abbtl-bfm__edit-input {
 .abbtl-cvf__pagination-info {
     color: #50575e;
     font-size: 13px;
+}
+
+/* Editable Element Label cell */
+.abbtl-cvf__label-cell {
+    position: relative;
+}
+
+.abbtl-cvf__label-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.abbtl-cvf__label-text {
+    display: inline-block;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    word-break: break-word;
+}
+
+.abbtl-cvf__label-text:hover {
+    background: rgba(34, 113, 177, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(34, 113, 177, 0.25);
+}
+
+.abbtl-cvf__open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    color: #50575e;
+    text-decoration: none;
+    font-size: 11px;
+    line-height: 1;
+    transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.abbtl-cvf__open:hover,
+.abbtl-cvf__open:focus {
+    background: #2271b1;
+    color: #fff;
+    outline: none;
+}
+
+.abbtl-cvf__cell-edit {
+    display: inline-block;
+    width: 100%;
+}
+
+.abbtl-cvf__edit-input {
+    width: 100%;
+    max-width: 320px;
+    padding: 4px 6px;
+    font-size: 13px;
+    line-height: 1.4;
+    box-sizing: border-box;
+}
+
+.abbtl-cvf__cell-edit.is-saving .abbtl-cvf__edit-input {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.abbtl-cvf__cell-edit.is-error .abbtl-cvf__edit-input {
+    border-color: #d63638;
+    box-shadow: 0 0 0 1px #d63638;
+}
+
+.abbtl-cvf__cell-status {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #646970;
+}
+
+.abbtl-cvf__cell-status--error {
+    color: #d63638;
+}
+
+/* Classes column on each row */
+.abbtl-cvf__classes-cell {
+    min-width: 220px;
+}
+
+.abbtl-cvf__class-chips {
+    list-style: none;
+    margin: 0 0 6px 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.abbtl-cvf__class-chip {
+    display: inline-block;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #075985;
+    background: #e0f2fe;
+    border-radius: 999px;
+    line-height: 1.7;
+}
+
+.abbtl-cvf__class-empty {
+    color: #8c8f94;
+    font-size: 12px;
+}
+
+.abbtl-cvf__classes-edit {
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+    height: auto !important;
+    padding: 1px 8px !important;
+}
+
+/* Edit-Classes modal */
+.abbtl-cvf__modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 15, 16, 0.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 60px 16px 16px;
+    z-index: 99999;
+    overflow-y: auto;
+}
+
+.abbtl-cvf__modal {
+    background: #fff;
+    border-radius: 8px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.abbtl-cvf__modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid #dcdcde;
+}
+
+.abbtl-cvf__modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.3;
+}
+
+.abbtl-cvf__modal-subtitle {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: #646970;
+}
+
+.abbtl-cvf__modal-close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    font-size: 24px;
+    line-height: 1;
+    color: #50575e;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.abbtl-cvf__modal-close:hover {
+    color: #1d2327;
+}
+
+.abbtl-cvf__modal-body {
+    padding: 16px 22px 18px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.abbtl-cvf__modal-warning {
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    background: #fdf6e3;
+    border-left: 3px solid #dba617;
+    border-radius: 3px;
+    color: #5a4500;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.abbtl-cvf__modal-section-heading {
+    margin: 14px 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1d2327;
+}
+
+.abbtl-cvf__modal-section-heading:first-child {
+    margin-top: 0;
+}
+
+.abbtl-cvf__modal-class-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #dcdcde;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.abbtl-cvf__modal-class-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #f0f0f1;
+    cursor: default;
+    transition: background-color 0.1s ease, opacity 0.1s ease;
+}
+
+.abbtl-cvf__modal-class-row:last-child {
+    border-bottom: 0;
+}
+
+.abbtl-cvf__modal-class-row.is-dragging {
+    opacity: 0.4;
+}
+
+.abbtl-cvf__modal-drag-handle {
+    color: #c3c4c7;
+    cursor: grab;
+    font-family: ui-monospace, monospace;
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+}
+
+.abbtl-cvf__modal-drag-handle:active {
+    cursor: grabbing;
+}
+
+.abbtl-cvf__modal-class-name {
+    flex: 1 1 auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #075985;
+    padding: 2px 6px;
+    margin: -2px -6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    word-break: break-all;
+}
+
+.abbtl-cvf__modal-class-name:hover {
+    background: #e0f2fe;
+}
+
+.abbtl-cvf__modal-class-input {
+    flex: 1 1 auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    padding: 3px 6px;
+}
+
+.abbtl-cvf__modal-remove {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: #b32d2e;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.abbtl-cvf__modal-remove:hover {
+    background: #fcebea;
+}
+
+.abbtl-cvf__modal-empty {
+    padding: 10px 12px;
+    color: #646970;
+}
+
+.abbtl-cvf__combobox {
+    position: relative;
+    width: 100%;
+}
+
+.abbtl-cvf__combobox-input {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    padding: 4px 8px;
+}
+
+.abbtl-cvf__combobox-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 10;
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+    max-height: 220px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+}
+
+.abbtl-cvf__combobox-option {
+    padding: 6px 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #075985;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.abbtl-cvf__combobox-option.is-highlighted {
+    background: #e0f2fe;
+    color: #0c4a6e;
+}
+
+.abbtl-cvf__combobox-empty {
+    margin: 8px 0 0;
+    color: #646970;
+    font-size: 12px;
+}
+
+.abbtl-cvf__modal-error {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    background: #fcebea;
+    border-left: 3px solid #d63638;
+    border-radius: 3px;
+    color: #8a1f1f;
+    font-size: 12px;
+}
+
+.abbtl-cvf__modal-footer {
+    padding: 12px 22px;
+    border-top: 1px solid #dcdcde;
+    background: #f6f7f7;
+    display: flex;
+    justify-content: flex-end;
 }

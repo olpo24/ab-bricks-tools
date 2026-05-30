@@ -76,6 +76,16 @@ final class UsageScanner
                     continue;
                 }
 
+                $rawClassIds = $element['settings']['_cssGlobalClasses'] ?? null;
+                $classIds    = [];
+                if (is_array($rawClassIds)) {
+                    foreach ($rawClassIds as $cid) {
+                        if (is_string($cid) && $cid !== '') {
+                            $classIds[] = $cid;
+                        }
+                    }
+                }
+
                 $usages[] = [
                     'postId'       => (int) $row->post_id,
                     'postTitle'    => (string) ($row->post_title !== '' ? $row->post_title : '(no title)'),
@@ -87,6 +97,7 @@ final class UsageScanner
                     'elementLabel' => isset($element['label']) && is_string($element['label']) && $element['label'] !== ''
                         ? $element['label']
                         : null,
+                    'classIds'     => $classIds,
                 ];
             }
         }

@@ -12,6 +12,9 @@ final class UsageFinder
 
     public string $lastEngine = '';
 
+    /** @var array{stage:string, exitCode?:int, stderr?:string, cmd?:string}|null */
+    public ?array $lastEngineError = null;
+
     /**
      * @param array{kind:string,id:string,name:string} $target
      * @return Usage[]
@@ -46,12 +49,16 @@ final class UsageFinder
      */
     private function scanViaWpCli(array $target): ?array
     {
+        $this->lastEngineError = null;
+
         if (!function_exists('proc_open') || !function_exists('proc_close')) {
+            $this->lastEngineError = ['stage' => 'proc_open disabled'];
             return null;
         }
 
         $script = ABBTL_PLUGIN_DIR . 'src/Modules/BricksClassVariableFinder/wpcli-scan.php';
         if (!is_file($script)) {
+            $this->lastEngineError = ['stage' => 'script missing'];
             return null;
         }
 
@@ -62,6 +69,7 @@ final class UsageFinder
         );
         $cmd = WpCli::buildCommand($args);
         if ($cmd === null) {
+            $this->lastEngineError = ['stage' => 'buildCommand returned null'];
             return null;
         }
 
@@ -71,8 +79,14 @@ final class UsageFinder
             2 => ['pipe', 'w'],
         ];
 
-        $process = @proc_open($cmd, $descriptors, $pipes);
+        $options = [];
+        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+            $options['bypass_shell'] = true;
+        }
+
+        $process = @proc_open($cmd, $descriptors, $pipes, null, null, $options);
         if (!is_resource($process)) {
+            $this->lastEngineError = ['stage' => 'proc_open spawn failed', 'cmd' => $cmd];
             return null;
         }
 
@@ -82,23 +96,40 @@ final class UsageFinder
             fclose($pipes[1]);
             fclose($pipes[2]);
             proc_close($process);
+            $this->lastEngineError = ['stage' => 'target payload encode failed'];
             return null;
         }
 
         fwrite($pipes[0], $payload);
         fclose($pipes[0]);
         $stdout = (string) stream_get_contents($pipes[1]);
-        stream_get_contents($pipes[2]); // drain
+        $stderr = (string) stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
         $exitCode = proc_close($process);
 
         if ($exitCode !== 0) {
+            $this->lastEngineError = [
+                'stage'    => 'non-zero exit',
+                'exitCode' => $exitCode,
+                'stderr'   => mb_substr(trim($stderr), 0, 800),
+                'cmd'      => (defined('WP_DEBUG') && WP_DEBUG) ? $cmd : null,
+            ];
             return null;
         }
 
         $data = json_decode($stdout, true);
-        return is_array($data) ? $data : null;
+        if (!is_array($data)) {
+            $this->lastEngineError = [
+                'stage'  => 'invalid JSON from stdout',
+                'stderr' => mb_substr(trim($stderr), 0, 400),
+                'stdout' => mb_substr(trim($stdout), 0, 400),
+                'cmd'    => (defined('WP_DEBUG') && WP_DEBUG) ? $cmd : null,
+            ];
+            return null;
+        }
+
+        return $data;
     }
 
     /**
@@ -106,6 +137,15 @@ final class UsageFinder
      */
     private function hydrate(array $r): Usage
     {
+        $classIds = [];
+        if (isset($r['classIds']) && is_array($r['classIds'])) {
+            foreach ($r['classIds'] as $cid) {
+                if (is_string($cid) && $cid !== '') {
+                    $classIds[] = $cid;
+                }
+            }
+        }
+
         return new Usage(
             postId:       (int) ($r['postId'] ?? 0),
             postTitle:    (string) ($r['postTitle'] ?? ''),
@@ -115,6 +155,7 @@ final class UsageFinder
             elementId:    (string) ($r['elementId'] ?? ''),
             elementName:  (string) ($r['elementName'] ?? ''),
             elementLabel: isset($r['elementLabel']) && is_string($r['elementLabel']) ? $r['elementLabel'] : null,
+            classIds:     $classIds,
         );
     }
 }

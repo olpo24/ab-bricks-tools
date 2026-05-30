@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace AB\BricksTools\Modules\BricksFormManager;
 
-use AB\BricksTools\Admin\Layout;
 use AB\BricksTools\Modules\HasAdminPage;
 use AB\BricksTools\Modules\ModuleInterface;
 use AB\BricksTools\System\WpCli;
@@ -18,6 +17,7 @@ final class Module implements ModuleInterface, HasAdminPage
 
     private const SAVE_TEXT_FIELDS = [
         'fromName', 'fromEmail', 'replyToEmail', 'emailTo', 'emailCc', 'emailSubject',
+        'redirect',
     ];
 
     private const SAVE_HTML_FIELDS = [
@@ -97,13 +97,16 @@ final class Module implements ModuleInterface, HasAdminPage
                 'emailSubject'      => $f->emailSubject,
                 'successMessage'    => $f->successMessage,
                 'emailErrorMessage' => $f->emailErrorMessage,
+                'hasRedirectAction' => $f->hasRedirectAction,
+                'redirect'          => $f->redirect,
                 'editUrl'           => self::buildBricksBuilderUrl($f->postId),
             ];
         }, $forms);
 
         return new WP_REST_Response([
-            'forms'  => $data,
-            'engine' => $finder->lastEngine,
+            'forms'       => $data,
+            'engine'      => $finder->lastEngine,
+            'engineError' => $finder->lastEngineError,
         ]);
     }
 
@@ -233,7 +236,6 @@ final class Module implements ModuleInterface, HasAdminPage
     public function renderAdminPage(): void
     {
         $wpcli = WpCli::status();
-        Layout::open();
         ?>
         <div class="abbtl-bfm">
             <h1>
@@ -269,6 +271,18 @@ final class Module implements ModuleInterface, HasAdminPage
                         </small>
                     </span>
                 </p>
+
+                <details
+                    x-show="scanned && engineError"
+                    x-cloak
+                    class="abbtl-engine-error"
+                    style="margin:8px 0;padding:8px 12px;background:#fdf6e3;border-left:3px solid #dba617;border-radius:3px;font-size:12px;"
+                >
+                    <summary style="cursor:pointer;color:#a86b00;">
+                        <?php esc_html_e('WP-CLI was available but the scan fell back to PHP — click to see why', 'ab-bricks-tools'); ?>
+                    </summary>
+                    <pre x-text="JSON.stringify(engineError, null, 2)" style="margin:8px 0 0;white-space:pre-wrap;word-break:break-word;color:#5a4500;"></pre>
+                </details>
 
                 <div x-show="error" x-cloak class="notice notice-error inline">
                     <p x-text="error"></p>
@@ -309,6 +323,7 @@ final class Module implements ModuleInterface, HasAdminPage
                                     <th scope="col"><?php esc_html_e('Subject', 'ab-bricks-tools'); ?></th>
                                     <th scope="col"><?php esc_html_e('Success Message', 'ab-bricks-tools'); ?></th>
                                     <th scope="col"><?php esc_html_e('Error Message', 'ab-bricks-tools'); ?></th>
+                                    <th scope="col"><?php esc_html_e('Redirect URL', 'ab-bricks-tools'); ?></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -333,11 +348,17 @@ final class Module implements ModuleInterface, HasAdminPage
                                         <?php echo $this->renderEditableCell('emailSubject'); ?>
                                         <?php echo $this->renderEditableCell('successMessage', true); ?>
                                         <?php echo $this->renderEditableCell('emailErrorMessage', true); ?>
+                                        <?php echo $this->renderEditableCell('redirect', false, 'hasRedirectAction'); ?>
                                     </tr>
                                 </template>
                             </tbody>
                         </table>
                     </div>
+
+                    <p class="abbtl-bfm__edit-hint">
+                        <span aria-hidden="true">💡</span>
+                        <?php esc_html_e('Tip: double-click any value to edit. Press Enter (or click away) to save, Esc to cancel.', 'ab-bricks-tools'); ?>
+                    </p>
 
                     <p x-show="filteredForms.length === 0" x-cloak style="margin-top:12px;color:#646970;">
                         <em><?php esc_html_e('No forms match the current filters.', 'ab-bricks-tools'); ?></em>
@@ -354,6 +375,7 @@ final class Module implements ModuleInterface, HasAdminPage
                     return {
                         forms: [],
                         engine: '',
+                        engineError: null,
                         scanning: false,
                         scanned: false,
                         error: '',
@@ -457,6 +479,7 @@ final class Module implements ModuleInterface, HasAdminPage
                                 }
                                 this.forms = Array.isArray(data.forms) ? data.forms : [];
                                 this.engine = data.engine || '';
+                                this.engineError = data.engineError || null;
                                 this.scanned = true;
                             } catch (e) {
                                 console.error('[ABBTL] Scan failed:', e);
@@ -470,44 +493,69 @@ final class Module implements ModuleInterface, HasAdminPage
             </script>
         </div>
         <?php
-        Layout::close();
     }
 
     /**
      * Render an editable table cell. Display mode = span of current value.
      * Edit mode (after dblclick) = input or textarea bound to `editing.value`.
+     *
+     * If $conditionField is supplied, the cell is only editable when
+     * `form[$conditionField]` is truthy — otherwise it renders a plain
+     * non-editable "NA" placeholder.
      */
-    private function renderEditableCell(string $fieldKey, bool $multiline = false): string
+    private function renderEditableCell(string $fieldKey, bool $multiline = false, ?string $conditionField = null): string
     {
         $fieldAttr = esc_attr($fieldKey);
         $fieldJs   = esc_js($fieldKey);
 
         $inputMarkup = $multiline
-            ? sprintf(
-                '<textarea class="abbtl-bfm__edit-input" rows="3" x-init="$el.focus()" x-model="editing.value" @blur="commitEdit()" @keydown.escape.prevent="cancelEdit()"></textarea>'
-            )
+            ? '<textarea class="abbtl-bfm__edit-input" rows="3" x-init="$el.focus()" x-model="editing.value" @blur="commitEdit()" @keydown.escape.prevent="cancelEdit()"></textarea>'
             : '<input class="abbtl-bfm__edit-input" type="text" x-init="$el.focus(); $el.select();" x-model="editing.value" @blur="commitEdit()" @keydown.enter.prevent="commitEdit()" @keydown.escape.prevent="cancelEdit()" />';
 
         $tooltip = esc_attr__('Double-click to edit', 'ab-bricks-tools');
 
+        // The dblclick + display + edit-mode block, reused in both branches.
         ob_start();
         ?>
-        <td class="abbtl-bfm__cell" @dblclick="startEdit(form, '<?php echo $fieldAttr; ?>')">
-            <span
-                class="abbtl-bfm__cell-value"
-                x-show="!isEditing(form, '<?php echo $fieldAttr; ?>')"
-                x-text="form.<?php echo $fieldJs; ?> || '—'"
-                title="<?php echo $tooltip; ?>"
-            ></span>
-            <template x-if="isEditing(form, '<?php echo $fieldAttr; ?>')">
-                <span class="abbtl-bfm__cell-edit" :class="{ 'is-saving': editing.saving, 'is-error': editing.error }">
-                    <?php echo $inputMarkup; ?>
-                    <small class="abbtl-bfm__cell-status" x-show="editing.saving" x-cloak><?php esc_html_e('Saving…', 'ab-bricks-tools'); ?></small>
-                    <small class="abbtl-bfm__cell-status abbtl-bfm__cell-status--error" x-show="editing.error" x-cloak x-text="editing.error"></small>
-                </span>
-            </template>
-        </td>
+        <span
+            class="abbtl-bfm__cell-value"
+            x-show="!isEditing(form, '<?php echo $fieldAttr; ?>')"
+            x-text="form.<?php echo $fieldJs; ?> || '—'"
+            title="<?php echo $tooltip; ?>"
+        ></span>
+        <template x-if="isEditing(form, '<?php echo $fieldAttr; ?>')">
+            <span class="abbtl-bfm__cell-edit" :class="{ 'is-saving': editing.saving, 'is-error': editing.error }">
+                <?php echo $inputMarkup; ?>
+                <small class="abbtl-bfm__cell-status" x-show="editing.saving" x-cloak><?php esc_html_e('Saving…', 'ab-bricks-tools'); ?></small>
+                <small class="abbtl-bfm__cell-status abbtl-bfm__cell-status--error" x-show="editing.error" x-cloak x-text="editing.error"></small>
+            </span>
+        </template>
         <?php
+        $editableInner = (string) ob_get_clean();
+
+        ob_start();
+        if ($conditionField === null) {
+            ?>
+            <td class="abbtl-bfm__cell" @dblclick="startEdit(form, '<?php echo $fieldAttr; ?>')">
+                <?php echo $editableInner; ?>
+            </td>
+            <?php
+        } else {
+            $condAttr = esc_attr($conditionField);
+            $condJs   = esc_js($conditionField);
+            ?>
+            <template x-if="form.<?php echo $condJs; ?>">
+                <td class="abbtl-bfm__cell" @dblclick="startEdit(form, '<?php echo $fieldAttr; ?>')">
+                    <?php echo $editableInner; ?>
+                </td>
+            </template>
+            <template x-if="!form.<?php echo $condJs; ?>">
+                <td class="abbtl-bfm__cell abbtl-bfm__cell--na">
+                    <span class="abbtl-bfm__na" title="<?php echo esc_attr__('Not applicable — enable this form\'s redirect action in Bricks to edit', 'ab-bricks-tools'); ?>">NA</span>
+                </td>
+            </template>
+            <?php
+        }
         return (string) ob_get_clean();
     }
 
