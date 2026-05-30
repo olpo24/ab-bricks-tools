@@ -78,6 +78,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   them past the first-statement check, WordPress fataled during boot,
   and the dispatcher silently fell back to PHP. Strict types stay
   enforced in the scanner classes the wrappers delegate to.
+- **Edit Classes modal — Add-a-class dropdown no longer clips.** The
+  combobox dropdown was getting cut off by the modal body's own
+  overflow context (`max-height: 60vh` + `overflow-y: auto`). The
+  body now grows with its content, the per-element class-list has its
+  own `max-height: 280px` + scroll for large lists, and the modal as
+  a whole caps at `calc(100vh - 80px)` so it still degrades gracefully
+  on small viewports.
 
 ## [0.0.2] - 2026-05-30
 

@@ -779,8 +779,14 @@ textarea.abbtl-bfm__edit-input {
     border-radius: 8px;
     width: 100%;
     max-width: 560px;
+    /* Cap the modal at viewport-minus-overlay-margin and let it scroll as a
+       whole if content overflows. We avoid `overflow: hidden` here so the
+       combobox dropdown (which lives in the body) isn't clipped — the body
+       no longer has its own overflow context, so the dropdown can extend
+       freely within the modal. */
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
     box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -823,8 +829,10 @@ textarea.abbtl-bfm__edit-input {
 
 .abbtl-cvf__modal-body {
     padding: 16px 22px 18px;
-    max-height: 60vh;
-    overflow-y: auto;
+    /* No max-height / no overflow — body grows to fit content, so the
+       absolutely-positioned combobox dropdown isn't clipped by an inner
+       overflow context. The class-list below has its own scroll cap to
+       handle elements with many classes. */
 }
 
 .abbtl-cvf__modal-warning {
@@ -858,6 +866,10 @@ textarea.abbtl-bfm__edit-input {
     border: 1px solid #dcdcde;
     border-radius: 4px;
     background: #fff;
+    /* Cap the per-element class list so an element with many classes
+       scrolls inside this box rather than blowing up the whole modal. */
+    max-height: 280px;
+    overflow-y: auto;
 }
 
 .abbtl-cvf__modal-class-row {
