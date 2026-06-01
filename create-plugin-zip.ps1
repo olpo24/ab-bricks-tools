@@ -56,16 +56,22 @@ function Test-ShouldInclude {
     param([string]$RelPath)
 
     # Forward-slash for matching
-    $rel = $RelPath -replace '\\', '/'
+    $rel   = $RelPath -replace '\\', '/'
+    $parts = $rel -split '/'
+
+    # The build output directory `./plugin/` lives only at the project root.
+    # Use case-sensitive `-ceq` (PowerShell's `-eq` is case-insensitive by
+    # default!) AND check only the first path segment, so vendor library
+    # subfolders like `vendor/.../Puc/v5p7/Plugin/` are NOT excluded.
+    if ($parts.Count -gt 0 -and $parts[0] -ceq 'plugin') { return $false }
 
     # Reject if ANY path segment is excluded.
-    foreach ($part in $rel -split '/') {
+    foreach ($part in $parts) {
         if ($part -eq '') { continue }
         if ($part.StartsWith('.'))        { return $false }   # hidden
         if ($part.StartsWith('src-'))     { return $false }   # src-svelte etc.
         if ($part.StartsWith('svelte-'))  { return $false }   # svelte-app etc.
-        if ($part -eq 'node_modules')     { return $false }
-        if ($part -eq 'plugin')           { return $false }
+        if ($part -ceq 'node_modules')    { return $false }
     }
 
     $leaf = Split-Path $rel -Leaf

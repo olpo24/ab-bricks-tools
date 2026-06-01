@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.6] - 2026-06-01
+
+### Fixed
+
+- **Critical: vendor files missing from release zips.** The zip
+  builder's "exclude the `./plugin/` output directory" rule used
+  PowerShell's case-INsensitive `-eq` AND matched any path segment
+  (not just the top-level). This silently dropped every directory
+  named `Plugin` (any case) anywhere in the file tree — including
+  `vendor/yahnis-elsts/plugin-update-checker/Puc/v5p7/Plugin/`. As a
+  result, every release since v0.0.2 shipped without
+  `Plugin\UpdateChecker` and friends, and any install that reached
+  the GitHub-update code path fataled with
+  `Class "...v5p7\Plugin\UpdateChecker" not found`. Fixed by using
+  case-sensitive `-ceq` and checking only the first path segment.
+
 ## [0.0.5] - 2026-05-31
 
 ### Added
