@@ -148,6 +148,108 @@ final class UsageScanner
     }
 
     /**
+     * Single-pass usage count for every target at once.
+     *
+     * Doing this per-target (as scanFromWpdb does) re-runs the exact same
+     * postmeta query N times for N targets, since the WHERE clause never
+     * depends on the target. Here we run that query once, decode each
+     * element once, and tally matches for every class/variable target in
+     * the same loop.
+     *
+     * @param array<int, array{kind:string,id:string,name:string}> $targets
+     * @return array<string, int> Map of "kind:id" => usage count.
+     */
+    public static function scanAllTargetsFromWpdb(\wpdb $wpdb, array $targets): array
+    {
+        $counts        = [];
+        $classIds      = [];
+        $variableNames = [];
+
+        foreach ($targets as $t) {
+            $kind = (string) ($t['kind'] ?? '');
+            $id   = (string) ($t['id'] ?? '');
+            $name = (string) ($t['name'] ?? '');
+            if ($id === '' || ($kind !== self::KIND_CLASS && $kind !== self::KIND_VARIABLE)) {
+                continue;
+            }
+            $counts[self::targetKey($kind, $id)] = 0;
+            if ($kind === self::KIND_CLASS) {
+                $classIds[$id] = true;
+            } else {
+                $variableNames[$id] = $name;
+            }
+        }
+
+        if (empty($classIds) && empty($variableNames)) {
+            return $counts;
+        }
+
+        $rows = $wpdb->get_results(
+            "SELECT pm.post_id, pm.meta_key, pm.meta_value, p.post_title, p.post_type, p.post_status
+             FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+             WHERE (pm.meta_key LIKE '_bricks_page_content%' OR pm.meta_key LIKE '_bricks_page_header%' OR pm.meta_key LIKE '_bricks_page_footer%')
+               AND p.post_type != 'revision'
+               AND p.post_status NOT IN ('trash', 'auto-draft')"
+        );
+
+        if (!$rows) {
+            return $counts;
+        }
+
+        $latestRows = self::pickLatestPerFamily($rows);
+
+        foreach ($latestRows as $row) {
+            $elements = self::decode($row->meta_value);
+            if (!is_array($elements)) {
+                continue;
+            }
+
+            foreach ($elements as $element) {
+                if (!is_array($element)) {
+                    continue;
+                }
+                $settings = $element['settings'] ?? null;
+                if (!is_array($settings)) {
+                    continue;
+                }
+
+                if (!empty($classIds)) {
+                    $usedClasses = $settings['_cssGlobalClasses'] ?? null;
+                    if (is_array($usedClasses)) {
+                        foreach ($usedClasses as $cid) {
+                            if (is_string($cid) && isset($classIds[$cid])) {
+                                $counts[self::targetKey(self::KIND_CLASS, $cid)]++;
+                            }
+                        }
+                    }
+                }
+
+                if (!empty($variableNames)) {
+                    $json = json_encode($settings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    foreach ($variableNames as $vid => $vname) {
+                        $needle = 'var(--' . $vname . ')';
+                        $found  = is_string($json) && strpos($json, $needle) !== false;
+                        if (!$found) {
+                            $found = self::treeContainsScalar($settings, $vid);
+                        }
+                        if ($found) {
+                            $counts[self::targetKey(self::KIND_VARIABLE, $vid)]++;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $counts;
+    }
+
+    private static function targetKey(string $kind, string $id): string
+    {
+        return $kind . ':' . $id;
+    }
+
+    /**
      * @param mixed $node
      */
     private static function treeContainsScalar($node, string $needle): bool
