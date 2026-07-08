@@ -13,6 +13,7 @@ use WP_REST_Server;
 final class Module implements ModuleInterface, HasAdminPage
 {
     public const REST_ROUTE_TARGETS          = '/class-variable-finder/targets';
+    public const REST_ROUTE_USAGE_SUMMARY    = '/class-variable-finder/usage-summary';
     public const REST_ROUTE_SCAN             = '/class-variable-finder/scan';
     public const REST_ROUTE_SAVE_LABEL       = '/class-variable-finder/element-label';
     public const REST_ROUTE_SAVE_ELEMENT_CLS = '/class-variable-finder/element-classes';
@@ -96,6 +97,12 @@ final class Module implements ModuleInterface, HasAdminPage
         register_rest_route('abbtl/v1', self::REST_ROUTE_TARGETS, [
             'methods'             => WP_REST_Server::READABLE,
             'callback'            => [$this, 'restListTargets'],
+            'permission_callback' => static fn () => current_user_can('manage_options'),
+        ]);
+
+        register_rest_route('abbtl/v1', self::REST_ROUTE_USAGE_SUMMARY, [
+            'methods'             => WP_REST_Server::READABLE,
+            'callback'            => [$this, 'restUsageSummary'],
             'permission_callback' => static fn () => current_user_can('manage_options'),
         ]);
 
@@ -765,6 +772,21 @@ final class Module implements ModuleInterface, HasAdminPage
         ]);
     }
 
+    /**
+     * Usage counts for every global class/variable in one pass, so the
+     * picker list can flag "used" vs. "unused" without scanning each
+     * target individually.
+     */
+    public function restUsageSummary(): WP_REST_Response
+    {
+        global $wpdb;
+        $counts = UsageScanner::scanAllTargetsFromWpdb($wpdb, TargetCatalog::all());
+
+        return new WP_REST_Response([
+            'counts' => $counts,
+        ]);
+    }
+
     public function restScan(WP_REST_Request $request): WP_REST_Response
     {
         $kind = (string) $request->get_param('kind');
@@ -872,6 +894,23 @@ final class Module implements ModuleInterface, HasAdminPage
                                 @click="targetKindFilter = 'variable'"
                             ><?php esc_html_e('Variables', 'ab-bricks-tools'); ?></button>
                         </div>
+                        <div class="abbtl-cvf__kind-filter" role="group" aria-label="<?php echo esc_attr__('Filter by usage', 'ab-bricks-tools'); ?>">
+                            <button
+                                type="button"
+                                :class="{ 'is-active': targetUsageFilter === 'all' }"
+                                @click="targetUsageFilter = 'all'"
+                            ><?php esc_html_e('Any usage', 'ab-bricks-tools'); ?></button>
+                            <button
+                                type="button"
+                                :class="{ 'is-active': targetUsageFilter === 'used' }"
+                                @click="targetUsageFilter = 'used'"
+                            ><?php esc_html_e('Used', 'ab-bricks-tools'); ?></button>
+                            <button
+                                type="button"
+                                :class="{ 'is-active': targetUsageFilter === 'unused' }"
+                                @click="targetUsageFilter = 'unused'"
+                            ><?php esc_html_e('Unused', 'ab-bricks-tools'); ?></button>
+                        </div>
                         <label class="abbtl-cvf__picker-search">
                             <span><?php esc_html_e('Filter:', 'ab-bricks-tools'); ?></span>
                             <input
@@ -881,6 +920,13 @@ final class Module implements ModuleInterface, HasAdminPage
                             />
                         </label>
                         <span class="abbtl-cvf__picker-count" x-text="filteredTargets.length + ' / ' + targets.length"></span>
+                        <span
+                            class="abbtl-cvf__picker-count abbtl-cvf__picker-count--unused"
+                            x-show="!usageSummaryLoading"
+                            x-cloak
+                            x-text="unusedTargetsCount + ' <?php echo esc_attr__('unused', 'ab-bricks-tools'); ?>'"
+                        ></span>
+                        <span class="abbtl-cvf__picker-count" x-show="usageSummaryLoading" x-cloak><em><?php esc_html_e('Checking usage…', 'ab-bricks-tools'); ?></em></span>
                     </div>
 
                     <div class="abbtl-cvf__target-list" x-show="!loading" x-cloak>
@@ -895,6 +941,12 @@ final class Module implements ModuleInterface, HasAdminPage
                                 @keydown.enter.prevent="selectTarget(target)"
                             >
                                 <span class="abbtl-cvf__badge" :class="'abbtl-cvf__badge--' + target.kind" x-text="target.kind === 'class' ? 'Class' : 'Variable'"></span>
+                                <span
+                                    class="abbtl-cvf__usage-badge"
+                                    :class="isTargetUsed(target) === null ? 'abbtl-cvf__usage-badge--unknown' : (isTargetUsed(target) ? 'abbtl-cvf__usage-badge--used' : 'abbtl-cvf__usage-badge--unused')"
+                                    :title="isTargetUsed(target) === null ? '<?php echo esc_attr__('Usage not loaded yet', 'ab-bricks-tools'); ?>' : (isTargetUsed(target) ? (usageCountFor(target) + ' <?php echo esc_attr__('usage(s)', 'ab-bricks-tools'); ?>') : '<?php echo esc_attr__('Not used anywhere', 'ab-bricks-tools'); ?>')"
+                                    x-text="isTargetUsed(target) === null ? '…' : (isTargetUsed(target) ? ('● ' + usageCountFor(target)) : '○ 0')"
+                                ></span>
                                 <code
                                     x-show="!isPickerRenaming(target.id)"
                                     x-text="target.kind === 'class' ? ('.' + target.name) : ('--' + target.name)"
@@ -1601,8 +1653,12 @@ final class Module implements ModuleInterface, HasAdminPage
                         targets: [],
                         targetFilter: '',
                         targetKindFilter: 'all',
+                        targetUsageFilter: 'all',
                         selectedTarget: null,
                         loading: false,
+
+                        usageCounts: {},
+                        usageSummaryLoading: false,
 
                         usages: [],
                         engine: '',
@@ -1646,7 +1702,10 @@ final class Module implements ModuleInterface, HasAdminPage
                             this.loadBemAwarePrefs();
                             // Persist BEM toggle changes to localStorage on every flip.
                             this.$watch('bemAware', () => this.saveBemAwarePrefs(), { deep: true });
-                            return this.loadTargets();
+                            return Promise.all([
+                                this.loadTargets(),
+                                this.loadUsageSummary(),
+                            ]);
                         },
 
                         loadBemAwarePrefs() {
@@ -1829,7 +1888,7 @@ final class Module implements ModuleInterface, HasAdminPage
                                 }
                                 this._lastUndoneTs = restoreData.ts;
 
-                                await this.loadTargets();
+                                await Promise.all([this.loadTargets(), this.loadUsageSummary()]);
                                 if (this.selectedTarget && this.scanned) {
                                     await this.scan();
                                 }
@@ -1862,7 +1921,7 @@ final class Module implements ModuleInterface, HasAdminPage
                                 // Reload the list AND the target catalog since names
                                 // may have changed across the table.
                                 await this.loadRevisions();
-                                await this.loadTargets();
+                                await Promise.all([this.loadTargets(), this.loadUsageSummary()]);
                                 // Re-scan to pick up renamed names in usage rows, if a target is active.
                                 if (this.selectedTarget && this.scanned) {
                                     await this.scan();
@@ -2383,10 +2442,44 @@ final class Module implements ModuleInterface, HasAdminPage
                             }
                         },
 
+                        async loadUsageSummary() {
+                            this.usageSummaryLoading = true;
+                            try {
+                                const response = await fetch(
+                                    ABBTL.restUrl + '<?php echo esc_js(self::REST_ROUTE_USAGE_SUMMARY); ?>',
+                                    { method: 'GET', headers: { 'X-WP-Nonce': ABBTL.nonce } }
+                                );
+                                const data = await response.json();
+                                if (!response.ok) throw new Error(data.message || 'Failed to load usage summary');
+                                this.usageCounts = (data.counts && typeof data.counts === 'object') ? data.counts : {};
+                            } catch (e) {
+                                console.error('[ABBTL CVF] loadUsageSummary failed:', e);
+                                // Non-fatal: the picker still works, it just won't show used/unused badges.
+                            } finally {
+                                this.usageSummaryLoading = false;
+                            }
+                        },
+
+                        usageCountFor(target) {
+                            const n = this.usageCounts[target.kind + ':' + target.id];
+                            return typeof n === 'number' ? n : null;
+                        },
+
+                        isTargetUsed(target) {
+                            const n = this.usageCountFor(target);
+                            return n === null ? null : n > 0;
+                        },
+
+                        get unusedTargetsCount() {
+                            return this.targets.reduce((acc, t) => acc + (this.isTargetUsed(t) === false ? 1 : 0), 0);
+                        },
+
                         get filteredTargets() {
                             const needle = (this.targetFilter || '').trim().toLowerCase();
                             return this.targets.filter(t => {
                                 if (this.targetKindFilter !== 'all' && t.kind !== this.targetKindFilter) return false;
+                                if (this.targetUsageFilter === 'used' && !this.isTargetUsed(t)) return false;
+                                if (this.targetUsageFilter === 'unused' && this.isTargetUsed(t) !== false) return false;
                                 if (!needle) return true;
                                 return t.name.toLowerCase().includes(needle)
                                     || (t.value || '').toLowerCase().includes(needle);
