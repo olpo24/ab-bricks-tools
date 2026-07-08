@@ -792,6 +792,39 @@ textarea.abbtl-bfm__edit-input {
     color: #5b21b6;
 }
 
+.abbtl-cvf__picker-count--unused {
+    margin-left: 8px;
+    color: #b32d2e;
+    font-weight: 600;
+}
+
+.abbtl-cvf__usage-badge {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.6;
+    font-variant-numeric: tabular-nums;
+}
+
+.abbtl-cvf__usage-badge--used {
+    background: #edfaef;
+    color: #1a7f37;
+}
+
+.abbtl-cvf__usage-badge--unused {
+    background: #fcf0f1;
+    color: #b32d2e;
+}
+
+.abbtl-cvf__usage-badge--unknown {
+    background: #f0f0f1;
+    color: #646970;
+}
+
 .abbtl-cvf__picker-empty {
     margin: 8px 14px;
     color: #646970;
